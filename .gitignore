@@ -11,5 +11,6 @@ wheels/
 .python-version
 
 .vscode/
-media/
 
+# Manim specific media files
+media/**
