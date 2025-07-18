@@ -14,3 +14,7 @@ wheels/
 
 # Manim specific media files
 media/**
+
+
+# OSX
+.DS_Store

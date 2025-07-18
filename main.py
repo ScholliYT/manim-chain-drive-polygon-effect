@@ -81,22 +81,6 @@ class NonUniformityOfTheChainSpeed(Scene):
         self.wait(3)
         self.play(z.animate.set_value(26), run_time=1, rate_func=linear)
 
-
-
-
-
-class PolygonEffect(Scene):
-    """Demonstration of the polygon effect on a gear with 6 teeth and a chain drive."""
-    def construct(self):
-
-        gear = Gear(12, stroke_opacity=0, fill_color=WHITE, fill_opacity=1)
-        
-        self.add(gear)
-
-        gear2 = Gear(13, stroke_opacity=0, fill_color=WHITE, fill_opacity=1)
-
-        self.play(Transform(gear, gear2))
-
 class StandardGear(MovingCameraScene):
     """A standard gear with all the important properties shown next to it"""
     def construct(self):
@@ -207,6 +191,124 @@ class StandardGear(MovingCameraScene):
 
 
 
+class ChainOnGear(Scene):
+    """Demonstration of the chain on a gear."""
+    def construct(self):
+
+        gear = Gear(10, stroke_opacity=0, fill_color=WHITE, fill_opacity=1, module=0.5, alpha=20)
+        self.add(gear)
+
+        pitch_circ_base = Circle(radius=gear.rp, color=GREEN, stroke_width=5, stroke_opacity=1)
+        pitch_circle = Dashed_line_mobject(pitch_circ_base,num_dashes=int(gear.z*2), dashed_ratio=0.65, dash_offset=0.35/2)
+        pitch_circle.set_fill(GREEN, opacity=0.1)
+        pitch_circle_label = MathTex(r"r_p \text{ (pitch radius)}", color=GREEN).next_to(pitch_circle, RIGHT)
+        self.add(pitch_circle, pitch_circle_label)
+        self.wait(1)
+
+
+
+        # chain_link = Circle(radius=gear.m*PI/4.0, color=GRAY_A, fill_color=GRAY_C).shift(UP * gear.rp).set_fill(opacity=0.5)
+        # self.add(chain_link)
+
+        def compute_chain_position(gear: Gear, nth_tooth: int) -> np.ndarray:
+            """Compute the coordinates of a chain link at the nth tooth of the gear."""
+            
+            if nth_tooth < 0 or nth_tooth >= gear.z:
+                raise ValueError("nth_tooth must be between 0 and z-1")
+        
+
+
+            # the link will be on the pitch circle given by gear.rp and the gear's pitch_angle (angle between two teeth)
+            pitch_angle = gear.pitch_angle
+            # we need to take the current rotation of the gear into account (if it was rotated by an animation)
+            offset = gear.get_angle() + 0.5 * pitch_angle   # offset by half a tooth to center the link
+            x = gear.rp * np.cos(nth_tooth * pitch_angle + offset) 
+            y = gear.rp * np.sin(nth_tooth * pitch_angle + offset)
+
+            # add the offsets to the center position and return a array with the coordinates
+            center_pos = gear.get_center()
+            chain_link_position = np.array([center_pos[0] + x, center_pos[1] + y, center_pos[2]])
+            return chain_link_position
+        
+        # TODO: This is not the correct formular for the roll radius, but it is a good approximation for the chain link size. Need to take alpha, addendum and dedendum into account as well.
+        chain_link_roll_radius = gear.m * PI / 4.0
+
+        chain_rolls: list[Circle] = []
+        for nth_tooth in range(gear.z):
+           
+            # create a chain link at that position
+            chain_link = Circle(radius=chain_link_roll_radius, color=GRAY_A, fill_color=GRAY_C).shift(UP * gear.rp).set_fill(opacity=0.5)
+            chain_link.move_to(compute_chain_position(gear, nth_tooth))
+
+            # add an updater to the chain link to keep it at the correct position
+            chain_link.add_updater(lambda m, nth=nth_tooth: m.move_to(compute_chain_position(gear, nth_tooth=nth)))
+
+            self.add(chain_link)
+            # add the chain link to the list
+            chain_rolls.append(chain_link)
+        
+        # link all the chain rolls together with a chain link illustrated by a thick line, use an updater to keep the chain links connected
+        chain_link_lines: list[Line] = []
+        for i in range(len(chain_rolls)):
+            next_index = (i + 1) % len(chain_rolls)  # wrap around to the first link
+            # create a line between the current chain link and the next one
+            line_color = GRAY_C if (i % 2 == 0) else GRAY_B
+            line = Line(chain_rolls[i].get_center(), chain_rolls[next_index].get_center(), color=line_color)
+            line.set_stroke(width=35)
+            line.set_cap_style(CapStyleType.ROUND)
+
+            line.add_updater(lambda m, x=0, a=chain_rolls[i], b=chain_rolls[next_index]: m.put_start_and_end_on(start=a.get_center(),
+                                                                    end=b.get_center()))
+
+
+            # add the line to the list
+            chain_link_lines.append(line)
+
+            # assert that the line length less than the gear's pitch (direct connection vs arc length)
+            assert line.get_length() < gear.pitch, f"Line length {line.get_length()} is not less than pitch {gear.pitch}"
+
+        # add all the chain link lines to the scene but add all with i%2==0 first then the others in a second loop
+        # assert that we have a even number of chan links for the coloring to work nicely
+        assert len(chain_link_lines) % 2 == 0, "Number of chain links must be even for the coloring to work nicely"
+        chain_link_lines_even = chain_link_lines[0::2]
+        chain_link_lines_odd = chain_link_lines[1::2]
+        self.play(*[Create(line) for line in chain_link_lines_even])
+        self.wait(1)
+        self.play(*[Create(line) for line in chain_link_lines_odd], Uncreate(pitch_circle), Unwrite(pitch_circle_label, run_time=1)    )
+        self.wait(1)
+
+        # add a small dark grey dot on top of the link's lines intersection exactly at the chain_roll position
+        for i in range(len(chain_rolls)):
+            # get the chain roll position
+            pos = chain_rolls[i].get_center()
+            # create a dot at that position
+            dot = Dot(pos, color=GRAY_D, radius=0.1)
+            # add the dot to the scene
+            self.play(Create(dot), run_time=0.1)
+            # add an updater to the dot to keep it at the correct position
+            dot.add_updater(lambda m, x=0, cr=chain_rolls[i]: m.move_to(cr.get_center()))
+
+
+        # maximum speed of the chain drive is reached when one of the gear gaps is at the top
+        # this is exactly the rotational velocity of the gear at rp.
+        # the chain link moves with the same speed as the gear at the pitch radius
+
+
+        # let the gear rotate
+        self.wait(0.5)
+        self.play(Rotate(gear, gear.pitch_angle * 2, rate_func=smooth),
+                  run_time=4)
+        
+        self.wait()
+        self.play(Rotate(gear, -gear.pitch_angle * 2, rate_func=smooth),
+                    run_time=4)
+        self.wait()
+
+
+class PolygonEffect(Scene):
+    """Demonstration of the polygon effect on a gear with 6 teeth and a chain drive."""
+    def construct(self):
+        pass
 
 
 
