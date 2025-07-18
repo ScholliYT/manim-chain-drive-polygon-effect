@@ -5,6 +5,9 @@ import numpy as np
 
 from manim.mobject.geometry.tips import *
 from manim_cad_drawing_utils import *
+
+from chain_utils import GearChain
+
 class NonUniformityOfTheChainSpeed(Scene):
     """Plot of cos(180/z) in % over z from 6 to 40"""
     def construct(self):
@@ -528,3 +531,47 @@ class Add_height(MovingCameraScene):
         self.play(Create(dimdp))
         self.play(Create(dimda))
         self.wait(2)
+
+
+class GearChainDemo(Scene):
+    """Demonstration of the :class:`~GearChain` object in action."""
+
+    def construct(self):
+        # ------------------------------------------------------------------
+        # Gear
+        # ------------------------------------------------------------------
+        gear = Gear(
+            10, stroke_opacity=0, fill_color=WHITE, fill_opacity=1, module=0.5, alpha=20
+        )
+        self.add(gear)
+        self.wait(1)
+
+        # ------------------------------------------------------------------
+        # Build the chain and add to scene
+        # ------------------------------------------------------------------
+        chain = GearChain(gear, link_width=35, add_subobjects=False)
+        self.add(chain)
+
+        # Animate creation of the chain's rolls
+        self.play(*[Create(r) for r in chain.get_rolls()])
+
+        # Animate links (even, then odd) to emphasise alternating colour scheme
+        even_links = chain.get_links()[0::2]
+        odd_links = chain.get_links()[1::2]
+
+        self.play(*[Create(l) for l in even_links])
+        self.play(*[Create(l) for l in odd_links])
+
+        # Pins pop-in (purely illustrative)
+        for p in chain.get_pins():
+            self.play(Create(p), run_time=0.05)
+
+        chain.add_subobjects()
+
+        # ------------------------------------------------------------------
+        # Drive the system – note chain follows automatically via updaters
+        # ------------------------------------------------------------------
+        self.play(Rotate(gear, gear.pitch_angle * 2, rate_func=smooth), run_time=4)
+        self.wait(0.5)
+        self.play(Rotate(gear, -gear.pitch_angle * 2, rate_func=smooth), run_time=4)
+        self.wait()
